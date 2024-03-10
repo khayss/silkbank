@@ -1,21 +1,16 @@
-export interface NewUser {
+export interface NewAdmin {
   firstname: string;
   lastname: string;
   email: string;
   password: string;
-  tel?: string;
-  address?: string;
+  admintoken: string;
 }
 
-export interface User {
+export interface Admin {
   id: number;
   email: string;
   firstname: string;
   lastname: string;
-  status: boolean;
-  tel: string;
-  address: string;
-  balance: number;
   created_at: Date;
   password: string;
 }

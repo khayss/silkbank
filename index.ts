@@ -7,6 +7,7 @@ import methodOverride from "method-override";
 import morgan from "morgan";
 import { handleError } from "./middlewares/handleError";
 import { connectAdminDB } from "./databases/AdminDB";
+import { adminRouter } from "./routes/adminRoutes";
 
 const app = express();
 const port = Number(process.env.PORT) || 8080;
@@ -18,6 +19,7 @@ app
   .use(methodOverride("method_"))
 
   .use(process.env.USER_API_VERSION!, userRouter)
+  .use(process.env.ADMIN_API_VERSION!, adminRouter)
 
   .use(handleError);
 

@@ -1,12 +1,13 @@
 import { RequestHandler, Response, Request } from "express";
 import {
-  verifyLoginPayload,
-  verifySignupPayload,
+  verifyUserLoginPayload,
+  verifyUserSignupPayload,
 } from "../utils/payloadVerifier";
-import { Login, NewUser, ResetPassword } from "../types/User";
+import { NewUser } from "../types/User";
+import { Login, ResetPassword } from "../types/Common";
 import { userDB } from "../databases/UserDB";
 import { genAccountNumber } from "../utils/genAccountNumber";
-import { getUser, normalizeData } from "../utils/dbQueries";
+import { getUser, normalizeData } from "../utils/userDBQueries";
 import { hashPassword } from "../utils/hashPassword";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
@@ -16,10 +17,10 @@ import { UserError } from "../types/UserError";
 
 const signupUser: RequestHandler = catchError(
   async (req: Request, res: Response) => {
-    if (verifySignupPayload(req.body)) {
+    if (verifyUserSignupPayload(req.body)) {
       const { email, firstname, lastname, password, tel, address } =
         req.body as NewUser;
-      if (password.length >= 8) {
+      if (password.length > 7) {
         const result = await getUser(email);
         if (result.length === 0) {
           const hashedpassword = await hashPassword(password);
@@ -65,12 +66,12 @@ const signupUser: RequestHandler = catchError(
 
 const loginUser: RequestHandler = catchError(
   async (req: Request, res: Response) => {
-    if (verifyLoginPayload(req.body)) {
+    if (verifyUserLoginPayload(req.body)) {
       const { email, password } = req.body as Login;
       const result = await getUser(email.trim().toLowerCase(), "full");
       if (result.length !== 0) {
         const user = result[0];
-        const isPassword = await bcrypt.compare(password, user.password);
+        const isPassword = await bcrypt.compare(password.trim(), user.password);
         if (isPassword) {
           const period = 60 * 60 * 24;
           await jwt.sign(
