@@ -1,4 +1,5 @@
 import { userDB } from "../databases/UserDB";
+import { TxnReceipt } from "../types/Transaction";
 import { User } from "../types/User";
 
 export const getUser = async (email: string, full?: "id" | "full") => {
@@ -37,3 +38,51 @@ export const normalizeData = (
   ];
 };
 
+export const getCurrentBalance = async (accountNumber: string) => {
+  const text = "SELECT balance FROM users WHERE account_number=$1";
+  const result = await userDB.query(text, [accountNumber]);
+  return parseFloat(result.rows[0].balance);
+};
+
+export const creditAndUpdateUserBalance = async (
+  accountNumber: string,
+  amount: number
+) => {
+  const text =
+    "UPDATE users SET balance=$1 WHERE account_number=$2 RETURNING *";
+  const result = await userDB.query(text, [amount, accountNumber]);
+  console.log("user credited:");
+  console.log(result.rows);
+};
+
+export const recordTxn = async (array: TxnReceipt) => {
+  const text =
+    "INSERT INTO transactions(from_user, from_account, to_account, to_user, type, at, amount, status) VALUES($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *";
+  const result = await userDB.query(text, array);
+  console.log("new txn!");
+  console.log(result.rows);
+};
+
+export const verifyAndGetUser = async (userEmail: string, userCode: number) => {
+  const text =
+    "SELECT email, account_number, status FROM users WHERE email=$1 and user_pin=$2";
+  const result = await userDB.query(text, [userEmail, userCode]);
+  return result.rows as {
+    email: string;
+    account_number: string;
+    status: boolean;
+  }[];
+};
+export const verifyAndGetUserbyAccount = async (
+  account: string,
+  userCode: number
+) => {
+  const text =
+    "SELECT email, account_number, status FROM users WHERE account_number=$1 and user_pin=$2";
+  const result = await userDB.query(text, [account, userCode]);
+  return result.rows as {
+    email: string;
+    account_number: string;
+    status: boolean;
+  }[];
+};

@@ -7,7 +7,7 @@ export const verifyUser: RequestHandler = (req, res, next) => {
     if (token) {
       next();
     } else {
-      throw new Error("user not logged in");
+      throw new Error("you need to login to carry out this action");
     }
   });
 };

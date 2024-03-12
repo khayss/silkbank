@@ -19,3 +19,8 @@ export interface User {
   created_at: Date;
   password: string;
 }
+
+export interface TxnUser {
+  email: string;
+  account_number: string;
+}

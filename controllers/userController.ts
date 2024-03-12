@@ -1,19 +1,31 @@
 import { RequestHandler, Response, Request } from "express";
 import {
+  getUserBy,
   verifyUserLoginPayload,
   verifyUserSignupPayload,
+  verifyUserTxnPayload,
 } from "../utils/payloadVerifier";
 import { NewUser } from "../types/User";
 import { Login, ResetPassword } from "../types/Common";
 import { userDB } from "../databases/UserDB";
 import { genAccountNumber } from "../utils/genAccountNumber";
-import { getUser, normalizeData } from "../utils/userDBQueries";
+import {
+  creditAndUpdateUserBalance,
+  getCurrentBalance,
+  getUser,
+  normalizeData,
+  recordTxn,
+  // verifyAndGetUser,
+  verifyAndGetUserbyAccount,
+} from "../utils/userDBQueries";
 import { hashPassword } from "../utils/hashPassword";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
-import { sendMail } from "../utils/sendMail";
+// import { sendMail } from "../utils/sendMail";
 import { catchError } from "../utils/catchError";
 import { UserError } from "../types/UserError";
+import { findbyAccountNumber, getUserDetails } from "../utils/adminDBQueries";
+import { TxnReceipt, UserTxn } from "../types/Transaction";
 
 const signupUser: RequestHandler = catchError(
   async (req: Request, res: Response) => {
@@ -98,8 +110,8 @@ const loginUser: RequestHandler = catchError(
                 message: "user logged in successfully",
                 user: { ...user, password: "" },
               });
-              const text = `New login detected at ${new Date()}`;
-              await sendMail(user.email, "Sign in Notification", text);
+              // const text = `New login detected at ${new Date()}`;
+              // await sendMail(user.email, "Sign in Notification", text);
             }
           );
         } else {
@@ -131,7 +143,7 @@ const logoutUser: RequestHandler = catchError((req: Request, res: Response) => {
   res.status(200).json({ success: true, message: "user logged out" });
 });
 
-const forgotPassword: RequestHandler = catchError(
+const resetUserPassword: RequestHandler = catchError(
   async (req: Request, res: Response) => {
     const { email } = req.body as ResetPassword;
     if (email) {
@@ -152,12 +164,15 @@ const forgotPassword: RequestHandler = catchError(
                 500
               );
             }
-            const text = `use this link to reset your password: http://localhost:${process.env.PORT}${process.env.USER_API_VERSION}/reset-password/${user.id}/${token}`;
+            // const text = `use this link to reset your password: http://localhost:${process.env.PORT}${process.env.USER_API_VERSION}/reset-password/${user.id}/${token}`;
             res.cookie("userToken", "", { maxAge: 0, httpOnly: true });
             res
               .status(200)
               .json({ success: true, message: "password reset link sent" });
-            await sendMail(user.email, "Reset Password", text);
+            console.log(
+              `http://localhost:${process.env.PORT}${process.env.USER_API_VERSION}/reset-password/${user.id}/${token}`
+            );
+            // await sendMail(user.email, "Reset Password", text);
           }
         );
       } else {
@@ -177,7 +192,7 @@ const forgotPassword: RequestHandler = catchError(
   }
 );
 
-const updatePassword: RequestHandler = catchError(async (req, res) => {
+const updateUserPassword: RequestHandler = catchError(async (req, res) => {
   const { id, token } = req.params;
   const { password } = req.body;
   if (password) {
@@ -194,7 +209,7 @@ const updatePassword: RequestHandler = catchError(async (req, res) => {
             );
           }
           const hashedpassword = await hashPassword(password);
-          const text = "UPDATE users SET password=$1 WHERE ID=$2";
+          const text = "UPDATE users SET password=$1 WHERE id=$2";
           const response = await userDB.query(text, [
             hashedpassword,
             parseInt(id),
@@ -222,4 +237,138 @@ const updatePassword: RequestHandler = catchError(async (req, res) => {
   }
 });
 
-export { signupUser, loginUser, logoutUser, forgotPassword, updatePassword };
+const getUserToCredit: RequestHandler = catchError(async (req, res) => {
+  const getUser = getUserBy(req.body);
+  if (getUser === "account-number") {
+    const { accountnumber } = req.body;
+    if (
+      accountnumber.trim().length === 10 &&
+      !Number.isNaN(parseInt(accountnumber.trim()))
+    ) {
+      const result = await getUserDetails(
+        "user",
+        "account",
+        req.body.accountnumber
+      );
+      if (result.length > 0) {
+        res.status(200).json({ success: true, user: result[0] });
+      } else {
+        throw new Error("user not found");
+      }
+    } else {
+      throw new Error("invalid account number");
+    }
+  } else if (getUser === "email" || "both") {
+    const result = await getUserDetails(
+      "user",
+      "email",
+      req.body.email.trim().toLowerCase()
+    );
+    if (result.length > 0) {
+      res.status(200).json({ success: true, user: result[0] });
+    } else {
+      throw new Error("user not found");
+    }
+  } else if (getUser === "invalid") {
+    throw Error("invalid or incomplete request body");
+  }
+});
+
+const transfer: RequestHandler = catchError(async (req, res) => {
+  if (verifyUserTxnPayload(req.body)) {
+    const { usercode, useraccount, accountnumber, amount } =
+      req.body as UserTxn;
+    if (!Number.isNaN(parseFloat(amount.trim()))) {
+      if (
+        accountnumber.trim().length === 10 &&
+        !Number.isNaN(parseInt(accountnumber.trim()))
+      ) {
+        if (
+          usercode.trim().length === 4 &&
+          !Number.isNaN(parseInt(usercode.trim()))
+        ) {
+          const receiverResult = await findbyAccountNumber(accountnumber);
+          if (receiverResult.length > 0) {
+            const receiver = receiverResult[0];
+            const senderResult = await verifyAndGetUserbyAccount(
+              useraccount.trim().toLowerCase(),
+              parseInt(usercode)
+            );
+            if (senderResult.length > 0) {
+              const sender = senderResult[0];
+              if (!sender.status) {
+                const [senderPrevBal, receiverPrevBal] = await Promise.all([
+                  getCurrentBalance(sender.account_number.trim()),
+                  getCurrentBalance(accountnumber.trim()),
+                ]);
+                const txnAmount = Math.abs(
+                  Number(parseFloat(amount).toFixed(2))
+                );
+                if (senderPrevBal > txnAmount) {
+                  const senderNewBal = senderPrevBal - txnAmount;
+
+                  const receiverNewBal = receiverPrevBal + txnAmount;
+                  await Promise.all([
+                    creditAndUpdateUserBalance(
+                      accountnumber.trim(),
+                      receiverNewBal
+                    ),
+                    creditAndUpdateUserBalance(
+                      sender.account_number.trim(),
+                      senderNewBal
+                    ),
+                  ]);
+                  const txnReceipt: TxnReceipt = [
+                    sender.email.trim(),
+                    sender.account_number.trim(),
+                    receiver.account_number.trim(),
+                    receiver.email.trim(),
+
+                    "credit",
+                    "NOW()",
+                    txnAmount,
+                    "successful",
+                  ];
+
+                  await recordTxn(txnReceipt);
+                  res.status(201).json({
+                    success: true,
+                    message: "amount credited to user",
+                  });
+                } else {
+                  throw new Error("insufficient funds");
+                }
+              } else {
+                throw new Error(
+                  "this account is suspended! can't carry out this txn at the moment"
+                );
+              }
+            } else {
+              throw new Error("user code is incorrect");
+            }
+          } else {
+            throw new Error("no user with this account number exists");
+          }
+        } else {
+          throw new Error("user code is invalid");
+        }
+      } else {
+        throw new Error("account number is invalid");
+      }
+    } else {
+      throw new Error("Invalid Amount");
+    }
+  } else {
+    throw new Error("bad request. invalid or incomplete transaction request");
+  }
+});
+
+export {
+  signupUser,
+  loginUser,
+  logoutUser,
+  resetUserPassword,
+  updateUserPassword,
+  getUserToCredit,
+  transfer,
+};

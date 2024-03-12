@@ -14,3 +14,9 @@ export interface Admin {
   created_at: Date;
   password: string;
 }
+
+export interface UserForAdmin {
+  firstname: string;
+  lastname: string;
+  account_number: string;
+}
