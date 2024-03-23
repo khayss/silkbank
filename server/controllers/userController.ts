@@ -12,6 +12,7 @@ import { genAccountNumber } from "../utils/genAccountNumber";
 import {
   creditAndUpdateUserBalance,
   getCurrentBalance,
+  getCurrentUserDetails,
   getUser,
   normalizeData,
   recordTxn,
@@ -92,7 +93,7 @@ const loginUser: RequestHandler = catchError(
             {
               expiresIn: period,
             },
-            async (err, token) => {
+            async (err, userToken) => {
               if (err) {
                 console.log(`error  in signing token: ${err.message}`);
                 throw new UserError(
@@ -101,14 +102,14 @@ const loginUser: RequestHandler = catchError(
                   500
                 );
               }
-              res.cookie("userToken", token, {
+              res.cookie("userToken", userToken, {
                 maxAge: 1000 * period,
                 httpOnly: true,
               });
               res.status(200).json({
                 success: true,
                 message: "user logged in successfully",
-                user: { ...user, password: "" },
+                userToken,
               });
               // const text = `New login detected at ${new Date()}`;
               // await sendMail(user.email, "Sign in Notification", text);
@@ -362,7 +363,30 @@ const transfer: RequestHandler = catchError(async (req, res) => {
     throw new Error("bad request. invalid or incomplete transaction request");
   }
 });
-
+const getCurrentUser: RequestHandler = catchError(async (req, res) => {
+  const payload = req.get("Authorization");
+  if (payload) {
+    const token = payload.split(" ")[1];
+    if (token) {
+      const validationResult = (await jwt.verify(
+        token,
+        process.env.JWT_SECRET!
+      )) as { id: number };
+      if (validationResult) {
+        const currentUser = await getCurrentUserDetails(validationResult.id);
+        res.status(200).json({
+          success: true,
+          message: "here's the current user",
+          data: currentUser[0],
+        });
+      } else {
+        throw new Error("error validating token. sign in to get a new token");
+      }
+    } else {
+      throw new Error("invalid authorization header");
+    }
+  }
+});
 export {
   signupUser,
   loginUser,
@@ -371,4 +395,5 @@ export {
   updateUserPassword,
   getUserToCredit,
   transfer,
+  getCurrentUser,
 };

@@ -1,0 +1,14 @@
+CREATE TABLE users (
+    id SERIAL,
+    email TEXT UNIQUE NOT NULL PRIMARY KEY,
+    firstname VARCHAR(35) NOT NULL,
+    lastname VARCHAR(35)  NOT NULL,
+    status BOOLEAN NOT NULL DEFAULT FALSE,
+    account_number VARCHAR(10) NOT NULL,
+    address TEXT,
+    tel VARCHAR(10),
+    balance NUMERIC(17,2) NOT NULL DEFAULT 0.00,
+    created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    password TEXT NOT NULL,
+    user_pin NUMERIC(4,0)  NOT NULL DEFAULT 1234;
+);

@@ -86,3 +86,14 @@ export const verifyAndGetUserbyAccount = async (
     status: boolean;
   }[];
 };
+
+export const getCurrentUserDetails = async (id: number) => {
+  const text =
+    "SELECT email, account_number, status, balance, address, tel, firstname, lastname FROM users WHERE id=$1";
+  const result = await userDB.query(text, [id]);
+  if (result.rows.length > 0) {
+    return result.rows;
+  } else {
+    throw new Error("no user that matches the request parameters");
+  }
+};

@@ -8,10 +8,12 @@ import morgan from "morgan";
 import { handleError } from "./middlewares/handleError";
 import { connectAdminDB } from "./databases/AdminDB";
 import { adminRouter } from "./routes/adminRoutes";
+import cors from "cors";
 
 const app = express();
 const port = Number(process.env.PORT) || 8080;
 app
+  .use(cors({origin: "http://localhost:5173", credentials: true}))
   .use(morgan("dev"))
   .use(express.urlencoded({ extended: true }))
   .use(express.json())
